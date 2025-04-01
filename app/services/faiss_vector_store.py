@@ -34,7 +34,6 @@ class FAISSVectorStore:
         self.index_type = index_type
         self.metric_type = metric_type
 
-        # 设置FAISS度量类型
         if metric_type == "l2":
             faiss_metric = faiss.METRIC_L2
         elif metric_type == "ip":
@@ -42,7 +41,6 @@ class FAISSVectorStore:
         else:
             raise ValueError(f"不支持的度量类型: {metric_type}. 可用选项: 'l2', 'ip'")
 
-        # 初始化FAISS索引
         if index_type == "flat":
             if metric_type == "l2":
                 self.index = faiss.IndexFlatL2(dimension)
@@ -102,14 +100,11 @@ class FAISSVectorStore:
             raise ValueError(
                 f"文档数量 ({len(documents)}) 必须匹配嵌入数量 ({embeddings.shape[0]})")
 
-        # 如果索引需要训练但尚未训练，先训练它
         if not self.is_trained and hasattr(self.index, 'is_trained') and not self.index.is_trained:
             self.train(embeddings)
 
-        # 将嵌入添加到索引
         self.index.add(embeddings.astype('float32'))
 
-        # 存储文档和ID
         doc_ids = [doc.doc_id for doc in documents]
         self.documents.extend(documents)
         self.doc_ids.extend(doc_ids)
@@ -131,17 +126,15 @@ class FAISSVectorStore:
         return:
             (Document, 相似度分数)元组列表
         """
-        # 处理单个向量或批量查询
         if len(query_embedding.shape) == 1:
             query_embedding = query_embedding.reshape(1, -1)
 
-        # 执行搜索
         distances, indices = self.index.search(
             query_embedding.astype('float32'), top_k)
 
         results = []
         for i, idx in enumerate(indices[0]):
-            if idx != -1 and idx < len(self.documents):  # 有效索引
+            if idx != -1 and idx < len(self.documents):
                 doc = self.documents[idx]
                 distance = distances[0][i]
 

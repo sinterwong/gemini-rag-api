@@ -1,7 +1,5 @@
 import os
-import time
-import uuid
-from typing import List, Dict, Any, Tuple, Optional, Union
+from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
@@ -20,8 +18,8 @@ class RAGService:
         self,
         gemini_client: GeminiClient,
         vector_store: Optional[FAISSVectorStore] = None,
-        chunk_size: int = 500,
-        chunk_overlap: int = 100,
+        chunk_size: int = 4096,
+        chunk_overlap: int = 512,
         max_workers: int = 4
     ):
         """
@@ -36,9 +34,7 @@ class RAGService:
         """
         self.gemini_client = gemini_client
 
-        # 如果未提供向量存储，则创建一个
         if vector_store is None:
-            # 获取嵌入维度
             dimension = gemini_client.get_embedding_dimension()
             self.vector_store = FAISSVectorStore(dimension=dimension)
         else:
@@ -65,12 +61,9 @@ class RAGService:
         start = 0
 
         while start < len(text):
-            # 找到块的结束
             end = min(start + self.chunk_size, len(text))
 
-            # 尝试不切断单词或句子
             if end < len(text):
-                # 找到最后一个句号、问号、感叹号或段落分隔符
                 last_break = max(
                     text.rfind(". ", start, end),
                     text.rfind("? ", start, end),
@@ -80,14 +73,12 @@ class RAGService:
                 )
 
                 if last_break != -1 and last_break > start + self.chunk_size // 2:
-                    end = last_break + 1  # 包括标点符号
+                    end = last_break + 1
 
-            # 添加块
             chunk = text[start:end].strip()
-            if chunk:  # 只添加非空块
+            if chunk:
                 chunks.append(chunk)
 
-            # 移动窗口，带重叠
             start = start + self.chunk_size - self.chunk_overlap
 
         return chunks
@@ -134,24 +125,19 @@ class RAGService:
         if len(texts) != len(metadatas):
             raise ValueError("文档和元数据数量必须匹配")
 
-        # 处理所有文档
         all_chunks = []
         all_embeddings = []
         all_docs = []
 
-        # 分块所有文档
         for i, (text, metadata) in enumerate(zip(texts, metadatas)):
-            # 分块文档
             chunks = self._chunk_text(text)
 
             for j, chunk in enumerate(chunks):
-                # 更新元数据以包含块信息
                 chunk_metadata = metadata.copy() if metadata else {}
                 chunk_metadata.update({
                     "source_index": i,
                     "chunk_index": j,
                     "chunk_count": len(chunks),
-                    # 存储原始文本的前200个字符
                     "source_text": text[:200] + "..." if len(text) > 200 else text
                 })
 
@@ -159,23 +145,19 @@ class RAGService:
                 all_chunks.append(chunk)
                 all_docs.append(doc)
 
-        # 并行获取嵌入
         def get_embedding_safe(text):
             try:
                 return self.gemini_client.embed_text(text, task_type=task_type)
             except Exception as e:
                 print(f"获取嵌入时出错: {str(e)}")
-                # 返回零向量作为后备
                 dimension = self.vector_store.dimension
                 return np.zeros(dimension, dtype=np.float32)
 
-        # 使用线程池并行处理嵌入
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             all_embeddings = list(executor.map(get_embedding_safe, all_chunks))
 
         all_embeddings = np.array(all_embeddings, dtype=np.float32)
 
-        # 添加到向量存储
         doc_ids = self.vector_store.add(all_docs, all_embeddings)
 
         return doc_ids
@@ -197,11 +179,9 @@ class RAGService:
         return:
             (Document, 相似度分数)元组列表
         """
-        # 获取查询嵌入
         query_embedding = self.gemini_client.embed_text(
             query_text, task_type=task_type)
 
-        # 搜索相关文档
         results = self.vector_store.search(query_embedding, top_k=top_k)
 
         return results
@@ -229,7 +209,6 @@ class RAGService:
         return:
             包含生成回答和源文档的字典
         """
-        # 检索相关文档
         retrieval_results = self.query(query_text, top_k=top_k)
 
         if not retrieval_results:
@@ -238,15 +217,12 @@ class RAGService:
                 "sources": []
             }
 
-        # 构建上下文
         context_parts = []
         sources = []
 
         for i, (doc, score) in enumerate(retrieval_results):
-            # 添加文档到上下文
             context_parts.append(f"文档 {i+1}:\n{doc.text}")
 
-            # 准备源信息
             source_info = {
                 "text": doc.text,
                 "score": float(score),
@@ -257,7 +233,6 @@ class RAGService:
 
         context = "\n\n".join(context_parts)
 
-        # 使用默认或自定义提示模板
         if prompt_template is None:
             prompt = f"""
             请根据以下提供的文档回答查询。
@@ -272,11 +247,9 @@ class RAGService:
             回答:
             """
         else:
-            # 替换模板中的变量
             prompt = prompt_template.replace(
                 "{context}", context).replace("{query}", query_text)
 
-        # 生成回答
         answer = self.gemini_client.generate_content(
             prompt,
             temperature=temperature,
@@ -297,19 +270,16 @@ class RAGService:
         """
         os.makedirs(directory, exist_ok=True)
 
-        # 保存向量存储
         vector_store_dir = os.path.join(directory, "vector_store")
         self.vector_store.save(vector_store_dir)
 
-        # 保存配置
         config = {
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
             "max_workers": self.max_workers
         }
 
-        # 注意：这里不保存gemini_client，因为它包含API密钥
-        # 加载时需要重新创建
+        # 不保存gemini_client，因为它包含API密钥，因此加载时需要重新创建
 
     @classmethod
     def load(cls, directory: str, gemini_client: GeminiClient) -> 'RAGService':
@@ -327,52 +297,9 @@ class RAGService:
         vector_store_dir = os.path.join(directory, "vector_store")
         vector_store = FAISSVectorStore.load(vector_store_dir)
 
-        # 创建RAG服务实例
         rag_service = cls(
             gemini_client=gemini_client,
             vector_store=vector_store
         )
 
         return rag_service
-
-
-# 使用示例
-def example_usage():
-    # 初始化Gemini客户端
-    api_key = "YOUR_API_KEY"  # 替换为您的API密钥
-    gemini_client = GeminiClient(api_key=api_key)
-
-    # 初始化RAG服务
-    rag_service = RAGService(gemini_client=gemini_client)
-
-    # 添加示例文档
-    documents = [
-        """
-        检索增强生成（RAG）是一种将大型语言模型与外部知识源结合的AI技术。
-        它通过从文档语料库检索相关信息，然后将这些信息作为上下文提供给语言模型，
-        从而增强模型的响应能力。RAG可以减少幻觉，提高事实准确性，并使模型能够
-        回答关于其训练数据之外信息的问题。
-        """,
-        """
-        FAISS（Facebook AI Similarity Search）是Facebook Research开发的相似性搜索库。
-        它专为高效搜索和聚类大规模向量集设计，特别适用于需要快速搜索相似性的应用，
-        如相似图像搜索、推荐系统和文本语义搜索。FAISS提供了多种索引类型，包括精确和
-        近似搜索方法，能够处理数十亿个向量。
-        """
-    ]
-
-    # 添加文档到RAG系统
-    rag_service.add_documents(documents)
-
-    # 测试查询
-    results = rag_service.query("什么是FAISS？", top_k=1)
-    print(f"检索结果: {results[0][0].text[:100]}...")
-
-    # 测试生成
-    generation = rag_service.generate("解释RAG和FAISS如何结合使用")
-    print("\n生成回答:")
-    print(generation["answer"])
-
-
-if __name__ == "__main__":
-    example_usage()

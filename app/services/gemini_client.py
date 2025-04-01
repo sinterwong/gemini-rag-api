@@ -96,8 +96,7 @@ class GeminiClient:
                 config=types.EmbedContentConfig(task_type=actual_task_type)
             )
 
-            # 转换为numpy数组
-            embedding = np.array(result.embedding, dtype=np.float32)
+            embedding = np.array(result.embeddings[0].values, dtype=np.float32)
             return embedding
 
         except Exception as e:
@@ -149,8 +148,6 @@ class GeminiClient:
         model: Optional[str] = None,
         temperature: float = 0.2,
         max_output_tokens: int = 1024,
-        safety_settings: Optional[List[Dict[str, Any]]] = None,
-        generation_config: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         生成文本内容
@@ -170,28 +167,19 @@ class GeminiClient:
 
         generation_model = model or self.models["chat"]
 
-        # 处理提示格式
         contents = prompt if isinstance(prompt, list) else [prompt]
 
-        # 准备生成配置
+        # 暂时没用到
         config = {
             "temperature": temperature,
             "max_output_tokens": max_output_tokens,
         }
 
-        # 合并自定义生成配置（如果有）
-        if generation_config:
-            config.update(generation_config)
-
-        # 添加安全设置（如果有）
-        if safety_settings:
-            config["safety_settings"] = safety_settings
-
         try:
             response = self.client.models.generate_content(
                 model=generation_model,
                 contents=contents,
-                generation_config=types.GenerationConfig(**config)
+                config=config
             )
 
             return response.text
@@ -230,33 +218,3 @@ class GeminiClient:
             return True
         except Exception:
             return False
-
-
-# 使用示例
-def example_usage():
-    # 初始化客户端
-    api_key = "YOUR_API_KEY"  # 替换为您的API密钥
-    client = GeminiClient(api_key=api_key)
-
-    # 测试嵌入
-    text = "这是一个测试文本，用于生成嵌入向量。"
-    embedding = client.embed_text(text, task_type="semantic_similarity")
-    print(f"嵌入维度: {embedding.shape[0]}")
-
-    # 测试批量嵌入
-    texts = [
-        "第一个测试文本。",
-        "第二个测试文本，与第一个有些不同。",
-        "第三个测试文本，完全不同的主题。"
-    ]
-    embeddings = client.embed_batch(texts)
-    print(f"批量嵌入shape: {embeddings.shape}")
-
-    # 测试文本生成
-    prompt = "简要解释人工智能是什么？"
-    response = client.generate_content(prompt, temperature=0.5)
-    print(f"生成响应:\n{response}")
-
-
-if __name__ == "__main__":
-    example_usage()
