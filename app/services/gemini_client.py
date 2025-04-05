@@ -210,10 +210,9 @@ class GeminiClient:
         检查API是否可用
 
         return:
-            布尔值，表示API是否可用
+            是否可用
         """
         try:
-            # 尝试一个简单的API调用
             _ = self.client.models.get_model(self.models["chat"])
             return True
         except Exception:

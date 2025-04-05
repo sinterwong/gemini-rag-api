@@ -5,11 +5,8 @@
       "name": "Python: FastAPI",
       "type": "debugpy",
       "request": "launch",
-      "module": "tests.test_rag",
-      "args": [
-        "app.main:app",
-        "--reload"
-      ],
+      "module": "tests.test_client",
+      "args": [],
       "cwd": "${workspaceFolder}",
       "jinja": true,
       "justMyCode": true,

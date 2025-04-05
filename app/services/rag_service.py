@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
@@ -193,7 +194,8 @@ class RAGService:
         temperature: float = 0.2,
         max_output_tokens: int = 1024,
         include_sources: bool = True,
-        prompt_template: Optional[str] = None
+        prompt_template: Optional[str] = None,
+        snippet_length: int = 150
     ) -> Dict[str, Any]:
         """
         生成对查询的回答
@@ -205,61 +207,87 @@ class RAGService:
             max_output_tokens: 生成的最大令牌数
             include_sources: 是否在响应中包含源文档
             prompt_template: 可选的自定义提示模板
+            snippet_length: 相关文档展示的文本片段长度
 
         return:
             包含生成回答和源文档的字典
         """
         retrieval_results = self.query(query_text, top_k=top_k)
 
+        # 如果啥也没找到，给个明确的提示
         if not retrieval_results:
             return {
-                "answer": "无法找到相关信息来回答您的问题。",
-                "sources": []
+                "summary": "抱歉，根据您提供的查询，未能找到足够的相关信息来生成摘要。",
+                "retrieved_documents": [],
+                "source_links": []
             }
 
         context_parts = []
-        sources = []
+        formatted_documents_for_output = []
+        unique_links = set()  # 用 set 来自动去重链接
 
         for i, (doc, score) in enumerate(retrieval_results):
             context_parts.append(f"文档 {i+1}:\n{doc.text}")
 
-            source_info = {
-                "text": doc.text,
-                "score": float(score),
-                "metadata": doc.metadata,
-                "doc_id": doc.doc_id
-            }
-            sources.append(source_info)
+            # 如果需要包含来源信息，现在就处理好，提取需要的信息
+            if include_sources:
+                # 从 metadata 取标题，给个默认值以防万一
+                title = doc.metadata.get('title', 'N/A')
+                # 从 text 创建片段
+                snippet = doc.text[:snippet_length] + \
+                    ('...' if len(doc.text) > snippet_length else '')
+
+                formatted_documents_for_output.append({
+                    "title": title,
+                    "snippet": snippet
+                })
+
+                link = doc.metadata.get('来源链接')
+                if link:
+                    unique_links.add(link)
 
         context = "\n\n".join(context_parts)
 
         if prompt_template is None:
+            # 设置默认的prompt
             prompt = f"""
-            请根据以下提供的文档回答查询。
-            如果无法根据这些文档回答查询，请明确说明。
-            请不要编造信息，只使用提供的文档中的事实。
+            请仔细阅读以下提供的 {len(retrieval_results)} 篇文档，并根据用户的查询，生成一个简洁、连贯、信息准确的摘要。
+            摘要应概括文档中与查询最相关的核心内容。
+            请不要添加文档中未提及的信息或进行过度推断。
 
-            文档:
+            --- 开始提供的文档 ---
             {context}
+            --- 结束提供的文档 ---
 
-            查询: {query_text}
+            用户的查询: {query_text}
 
-            回答:
+            请生成摘要:
             """
         else:
             prompt = prompt_template.replace(
                 "{context}", context).replace("{query}", query_text)
+            logging.info("Using custom prompt template for summarization.")
 
-        answer = self.gemini_client.generate_content(
-            prompt,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens
-        )
+        logging.info(f"Generating summary for query: '{query_text[:50]}...'")
+        try:
+            summary_text = self.gemini_client.generate_content(
+                prompt,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens
+            )
+            logging.info("Summary generated successfully.")
+        except Exception as e:
+            logging.error(
+                f"Error generating summary from Gemini: {e}", exc_info=True)
+            summary_text = "抱歉，在为您生成摘要时遇到了问题。"
 
-        return {
-            "answer": answer,
-            "sources": sources if include_sources else None
+        result = {
+            "summary": summary_text,
+            "retrieved_documents": formatted_documents_for_output if include_sources else [],
+            "source_links": sorted(list(unique_links)) if include_sources else []
         }
+
+        return result
 
     def save(self, directory: str) -> None:
         """
@@ -278,8 +306,6 @@ class RAGService:
             "chunk_overlap": self.chunk_overlap,
             "max_workers": self.max_workers
         }
-
-        # 不保存gemini_client，因为它包含API密钥，因此加载时需要重新创建
 
     @classmethod
     def load(cls, directory: str, gemini_client: GeminiClient) -> 'RAGService':

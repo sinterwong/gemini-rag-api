@@ -25,7 +25,10 @@ build_release/
 build/
 cmake-build-debug/
 cmake-build-debug-remote-host/
+data/documents/*
+data/index/*
 .cache
+.env
 
 CMakeUserPresets.json
 *__pycache__
