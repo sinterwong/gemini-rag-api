@@ -119,6 +119,7 @@ def add_documents_route():
         return jsonify({"error": "Invalid request format. Expected JSON: {'documents': [{'text': '...', 'metadata': {...}}]}"}), 400
 
     try:
+        doc_ids = [doc.get('doc_id') for doc in data['documents']]
         texts = [doc.get('text') for doc in data['documents']]
         metadatas = [doc.get('metadata', {})
                      for doc in data['documents']]
@@ -127,7 +128,7 @@ def add_documents_route():
             return jsonify({"error": "All documents must have a non-empty 'text' field"}), 400
 
         logging.info(f"Received request to add {len(texts)} documents.")
-        doc_ids = rag_service.add_documents(texts, metadatas)
+        doc_ids = rag_service.add_documents(doc_ids, texts, metadatas)
         logging.info(f"Successfully added {len(doc_ids)} document chunks.")
 
         try:

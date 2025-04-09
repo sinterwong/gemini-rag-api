@@ -7,7 +7,7 @@ import shutil
 
 def test_faiss_vector_store():
     # 创建一个临时目录用于测试
-    test_dir = "./test_vector_store"
+    test_dir = "./data/index/test_vector_store"
     os.makedirs(test_dir, exist_ok=True)
 
     # 测试数据

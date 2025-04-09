@@ -50,7 +50,10 @@ def parse_my_weird_txt(file_path: str, delimiter: str = '\n\n\n\n\n\n') -> List[
                 if match:
                     key = match.group(1).strip()
                     value = match.group(2).strip()
-                    metadata[key] = value
+                    if key == "来源链接":
+                        metadata["url"] = value
+                    else:
+                        metadata[key] = value
             elif line.startswith('## 正文'):
                 in_text_section = True
                 line_idx += 1
@@ -140,6 +143,22 @@ def generate_api(ip: str, port: int, query_text: str, top_k: int = 5, include_so
         print(f"其他错误: {err}")
 
 
+def health_check_api(ip: str, port: int):
+    url = f"http://{ip}:{port}/health"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        print(f"健康检查结果: {response.json()}")
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP 错误: {http_err}")
+        if response.text:
+            print(f"服务器返回内容: {response.text}")
+    except requests.exceptions.ConnectionError as conn_err:
+        print(f"连接错误: {conn_err}")
+    except Exception as err:
+        print(f"其他错误: {err}")
+
+
 if __name__ == "__main__":
     ip = "localhost"
     port = 9797
@@ -151,8 +170,10 @@ if __name__ == "__main__":
         print(f"成功解析了 {len(parsed_docs)} 个文档:")
 
     documents_for_api = [
-        {"text": doc.text, "metadata": doc.metadata} for doc in parsed_docs[:3]
+        {"doc_id": doc.doc_id, "text": doc.text, "metadata": doc.metadata} for doc in parsed_docs[:3]
     ]
+    health_check_api(ip, port)
+
     add_documents_to_api(ip, port, documents_for_api)
 
     query_api(ip, port, "西汉姆球员最近有什么动态？")

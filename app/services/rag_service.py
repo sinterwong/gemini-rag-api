@@ -86,6 +86,7 @@ class RAGService:
 
     def add_document(
         self,
+        doc_id: str,
         text: str,
         metadata: Optional[Dict[str, Any]] = None,
         task_type: str = "retrieval_document"
@@ -101,10 +102,11 @@ class RAGService:
         return:
             添加的文档块ID列表
         """
-        return self.add_documents([text], [metadata] if metadata else [{}], task_type)
+        return self.add_documents([doc_id], [text], [metadata] if metadata else [{}], task_type)
 
     def add_documents(
         self,
+        doc_ids: List[str],
         texts: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
         task_type: str = "retrieval_document"
@@ -113,6 +115,7 @@ class RAGService:
         添加多个文档到RAG系统
 
         params:
+            doc_ids: 文档ID列表
             texts: 文档文本列表
             metadatas: 可选的元数据字典列表
             task_type: 嵌入任务类型
@@ -130,7 +133,7 @@ class RAGService:
         all_embeddings = []
         all_docs = []
 
-        for i, (text, metadata) in enumerate(zip(texts, metadatas)):
+        for i, (doc_id, text, metadata) in enumerate(zip(doc_ids, texts, metadatas)):
             chunks = self._chunk_text(text)
 
             for j, chunk in enumerate(chunks):
@@ -142,7 +145,8 @@ class RAGService:
                     "source_text": text[:200] + "..." if len(text) > 200 else text
                 })
 
-                doc = Document(text=chunk, metadata=chunk_metadata)
+                doc = Document(doc_id=doc_id, text=chunk,
+                               metadata=chunk_metadata)
                 all_chunks.append(chunk)
                 all_docs.append(doc)
 
@@ -195,7 +199,7 @@ class RAGService:
         max_output_tokens: int = 1024,
         include_sources: bool = True,
         prompt_template: Optional[str] = None,
-        snippet_length: int = 150
+        snippet_length: int = 50
     ) -> Dict[str, Any]:
         """
         生成对查询的回答
@@ -219,32 +223,24 @@ class RAGService:
             return {
                 "summary": "抱歉，根据您提供的查询，未能找到足够的相关信息来生成摘要。",
                 "retrieved_documents": [],
-                "source_links": []
             }
 
         context_parts = []
         formatted_documents_for_output = []
-        unique_links = set()  # 用 set 来自动去重链接
 
         for i, (doc, score) in enumerate(retrieval_results):
             context_parts.append(f"文档 {i+1}:\n{doc.text}")
 
             # 如果需要包含来源信息，现在就处理好，提取需要的信息
             if include_sources:
-                # 从 metadata 取标题，给个默认值以防万一
-                title = doc.metadata.get('title', 'N/A')
                 # 从 text 创建片段
                 snippet = doc.text[:snippet_length] + \
                     ('...' if len(doc.text) > snippet_length else '')
 
                 formatted_documents_for_output.append({
-                    "title": title,
-                    "snippet": snippet
+                    "snippet": snippet,
+                    "metadata": doc.metadata,
                 })
-
-                link = doc.metadata.get('来源链接')
-                if link:
-                    unique_links.add(link)
 
         context = "\n\n".join(context_parts)
 
@@ -284,7 +280,6 @@ class RAGService:
         result = {
             "summary": summary_text,
             "retrieved_documents": formatted_documents_for_output if include_sources else [],
-            "source_links": sorted(list(unique_links)) if include_sources else []
         }
 
         return result

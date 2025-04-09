@@ -292,39 +292,3 @@ class FAISSVectorStore:
             "metric_type": self.metric_type,
             "is_trained": self.is_trained
         }
-
-
-# 使用示例
-def example_usage():
-    # 假设我们已经有嵌入和文档
-    dimension = 3072  # Gemini嵌入维度
-    vector_store = FAISSVectorStore(dimension=dimension)
-
-    # 模拟文档和嵌入
-    docs = [
-        Document(text="这是第一个测试文档", metadata={"source": "test"}),
-        Document(text="这是第二个测试文档", metadata={"source": "test"}),
-        Document(text="这是完全不同主题的文档", metadata={"source": "other"})
-    ]
-
-    # 创建随机嵌入（在实际应用中，这些将由嵌入模型生成）
-    embeddings = np.random.rand(len(docs), dimension).astype('float32')
-
-    # 添加到向量存储
-    vector_store.add(docs, embeddings)
-
-    # 搜索
-    query_embedding = np.random.rand(dimension).astype('float32')
-    results = vector_store.search(query_embedding, top_k=2)
-
-    for doc, score in results:
-        print(f"文档 '{doc.text}' (ID: {doc.doc_id}), 分数: {score:.4f}")
-
-    # 保存和加载
-    vector_store.save("./vector_store_example")
-    loaded_store = FAISSVectorStore.load("./vector_store_example")
-    print(f"加载的向量存储包含 {len(loaded_store.documents)} 个文档")
-
-
-if __name__ == "__main__":
-    example_usage()
